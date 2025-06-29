@@ -64,15 +64,7 @@ def evaluate_instance(instance: SWEFlowTestInstance) -> EvaluationResult:
     if exit_code != 0:
         raise EvaluationError(instance.instance_id, exit_code, output)
 
-    # step 4: write patch to container:/tmp/patch.diff
-    exit_code, output = exec_command_in_container(
-        container,
-        f"cat > /tmp/patch.diff << 'EOF'\n{instance.patch}\nEOF",
-    )
-    if exit_code != 0:
-        raise EvaluationError(instance.instance_id, exit_code, output)
-
-    # step 5: apply patch
+    # step 4: apply patch
     temp_file_path = tempfile.mktemp()
     with open(temp_file_path, "w") as f:
         f.write(instance.patch)
@@ -89,7 +81,7 @@ def evaluate_instance(instance: SWEFlowTestInstance) -> EvaluationResult:
         raise EvaluationError(instance.instance_id, exit_code, output)
     Path(temp_file_path).unlink()
 
-    # step 6: run eval script
+    # step 5: run eval script
     eval_script = instance.get_eval_script()
     exit_code, output = exec_command_in_container(
         container,
@@ -105,7 +97,7 @@ def evaluate_instance(instance: SWEFlowTestInstance) -> EvaluationResult:
         test_log=output,
     )
 
-    # step 7: stop and remove container
+    # step 6: stop and remove container
     stop_docker_container(container)
     remove_docker_container(container)
 
