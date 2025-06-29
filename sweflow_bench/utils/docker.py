@@ -54,6 +54,7 @@ def exec_command_in_container(
     container: Container,
     command: str,
     timeout: int | None = None,
+    workdir: str | None = None,
 ):
     try:
         if timeout is not None:
@@ -62,20 +63,20 @@ def exec_command_in_container(
         else:
             # execute command through bash
             command = f"bash -c '{command}'"
-        exec_result = container.exec_run(command)
+        exec_result = container.exec_run(command, workdir=workdir)
         return exec_result.exit_code, exec_result.output.decode("utf-8")
     except docker.errors.APIError as e:
         raise DockerError(f"Error executing command in container: {e}")
 
 
 def copy_file_to_container(
-    container_name: str,
+    container: Container,
     local_path: str,
     container_path: str,
 ) -> bool:
     try:
         result = subprocess.run(
-            ["docker", "cp", local_path, f"{container_name}:{container_path}"],
+            ["docker", "cp", local_path, f"{container.id}:{container_path}"],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -86,12 +87,12 @@ def copy_file_to_container(
 
 
 def read_file_from_container(
-    container_name: str,
+    container: Container,
     container_path: str,
 ) -> str:
     try:
         result = subprocess.run(
-            ["docker", "exec", container_name, "cat", container_path],
+            ["docker", "exec", container.id, "cat", container_path],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

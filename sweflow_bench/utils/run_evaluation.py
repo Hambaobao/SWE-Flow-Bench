@@ -1,3 +1,5 @@
+import tempfile
+
 from typing import List
 from pathlib import Path
 from datetime import datetime
@@ -8,6 +10,7 @@ from sweflow_bench.utils.docker import (
     stop_docker_container,
     remove_docker_container,
     exec_command_in_container,
+    copy_file_to_container,
 )
 from sweflow_bench.utils.data import SWEFlowTestInstance
 
@@ -24,7 +27,13 @@ class EvaluationResult(BaseModel):
     instance_id: str
     resolved: bool
     exit_code: int
-    test_output: str
+    test_log: str
+
+
+GIT_APPLY_COMMANDS = [
+    "git apply /tmp/patch.diff",
+    "git apply -p0 /tmp/patch.diff",
+]
 
 
 def evaluate_instance(instance: SWEFlowTestInstance) -> EvaluationResult:
@@ -49,7 +58,8 @@ def evaluate_instance(instance: SWEFlowTestInstance) -> EvaluationResult:
     # step 3: checkout to base_commit
     exit_code, output = exec_command_in_container(
         container,
-        f"cd /workspace && git checkout {instance.base_commit}",
+        f"git checkout {instance.base_commit}",
+        workdir="/workspace",
     )
     if exit_code != 0:
         raise EvaluationError(instance.instance_id, exit_code, output)
@@ -63,12 +73,21 @@ def evaluate_instance(instance: SWEFlowTestInstance) -> EvaluationResult:
         raise EvaluationError(instance.instance_id, exit_code, output)
 
     # step 5: apply patch
-    exit_code, output = exec_command_in_container(
-        container,
-        f"cd /workspace && git apply /tmp/patch.diff",
-    )
+    temp_file_path = tempfile.mktemp()
+    with open(temp_file_path, "w") as f:
+        f.write(instance.patch)
+    copy_file_to_container(container, temp_file_path, "/tmp/patch.diff")
+    for git_apply_command in GIT_APPLY_COMMANDS:
+        exit_code, output = exec_command_in_container(
+            container,
+            git_apply_command,
+            workdir="/workspace",
+        )
+        if exit_code == 0:
+            break
     if exit_code != 0:
         raise EvaluationError(instance.instance_id, exit_code, output)
+    Path(temp_file_path).unlink()
 
     # step 6: run eval script
     eval_script = instance.get_eval_script()
@@ -76,13 +95,14 @@ def evaluate_instance(instance: SWEFlowTestInstance) -> EvaluationResult:
         container,
         eval_script,
         timeout=900,  # 15 minutes
+        workdir="/workspace",
     )
 
     evaluation_result = EvaluationResult(
         instance_id=instance.instance_id,
         resolved=exit_code == 0,
         exit_code=exit_code,
-        test_output=output,
+        test_log=output,
     )
 
     # step 7: stop and remove container
@@ -111,13 +131,15 @@ def run_evaluation(
                 instance_id=instance.instance_id,
                 resolved=False,
                 exit_code=e.exit_code,
-                test_output=e.output,
+                test_log=e.output,
             )
 
         # save evaluation results
         instance_report_path = Path(output_dir) / instance.instance_id / "report.json"
+        instance_test_log_path = Path(output_dir) / instance.instance_id / "test_output.log"
         instance_report_path.parent.mkdir(parents=True, exist_ok=True)
         instance_report_path.write_text(evaluation_result.model_dump_json(indent=4))
+        instance_test_log_path.write_text(evaluation_result.test_log)
 
         results.append(evaluation_result)
 
