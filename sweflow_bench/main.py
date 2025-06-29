@@ -1,6 +1,8 @@
 import argparse
 import logging
 
+from pathlib import Path
+
 from sweflow_bench.utils.data import load_eval_instances
 from sweflow_bench.utils.run_evaluation import run_evaluation
 
@@ -38,7 +40,13 @@ def main():
         args.instance_ids,
     )
 
-    run_evaluation(eval_instances, args.output_dir)
+    results = run_evaluation(eval_instances, args.output_dir)
+
+    # save results
+    results_path = Path(args.output_dir) / "results.jsonl"
+    with open(results_path, "w") as f:
+        for result in results:
+            f.write(result.model_dump_json() + "\n")
 
 
 if __name__ == "__main__":
