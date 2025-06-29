@@ -40,8 +40,8 @@ def evaluate_instance(instance: SWEFlowTestInstance) -> EvaluationResult:
     # step 2: move container:/testbed to container:/workspace
     exit_code, output = exec_command_in_container(
         container,
-        "mv /testbed /workspace",
-        timeout=30,  # 30 seconds
+        "cp -r /testbed/. /workspace",
+        timeout=60,  # 60 seconds timeout
     )
     if exit_code != 0:
         raise EvaluationError(instance.instance_id, exit_code, output)
@@ -49,8 +49,7 @@ def evaluate_instance(instance: SWEFlowTestInstance) -> EvaluationResult:
     # step 3: checkout to base_commit
     exit_code, output = exec_command_in_container(
         container,
-        f"git checkout {instance.base_commit}",
-        timeout=30,  # 30 seconds
+        f"cd /workspace && git checkout {instance.base_commit}",
     )
     if exit_code != 0:
         raise EvaluationError(instance.instance_id, exit_code, output)
@@ -58,8 +57,7 @@ def evaluate_instance(instance: SWEFlowTestInstance) -> EvaluationResult:
     # step 4: write patch to container:/tmp/patch.diff
     exit_code, output = exec_command_in_container(
         container,
-        f"echo '{instance.patch}' > /tmp/patch.diff",
-        timeout=30,  # 30 seconds
+        f"cat > /tmp/patch.diff << 'EOF'\n{instance.patch}\nEOF",
     )
     if exit_code != 0:
         raise EvaluationError(instance.instance_id, exit_code, output)
@@ -67,8 +65,7 @@ def evaluate_instance(instance: SWEFlowTestInstance) -> EvaluationResult:
     # step 5: apply patch
     exit_code, output = exec_command_in_container(
         container,
-        f"git apply /tmp/patch.diff",
-        timeout=30,  # 30 seconds
+        f"cd /workspace && git apply /tmp/patch.diff",
     )
     if exit_code != 0:
         raise EvaluationError(instance.instance_id, exit_code, output)

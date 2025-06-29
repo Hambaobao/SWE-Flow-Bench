@@ -53,14 +53,17 @@ def remove_docker_container(container: Container):
 def exec_command_in_container(
     container: Container,
     command: str,
-    timeout: int = None,
+    timeout: int | None = None,
 ):
     try:
         if timeout is not None:
-            # wrap command with timeout tool
-            command = f"timeout {timeout}s {command}"
+            # wrap command with timeout tool and execute through bash
+            command = f"bash -c 'timeout {timeout}s {command}'"
+        else:
+            # execute command through bash
+            command = f"bash -c '{command}'"
         exec_result = container.exec_run(command)
-        return exec_result.exit_code, exec_result.output
+        return exec_result.exit_code, exec_result.output.decode("utf-8")
     except docker.errors.APIError as e:
         raise DockerError(f"Error executing command in container: {e}")
 
