@@ -40,68 +40,72 @@ def evaluate_instance(instance: SWEFlowTestInstance) -> EvaluationResult:
     """
     Evaluate the given instance.
     """
-    # step 1: start docker container
     container = start_docker_container(
         image_name=instance.docker_image,
         container_name=f"sweflow-bench-{instance.instance_id}-{datetime.now().strftime('%Y%m%d-%H%M%S-%f')}",
     )
-
-    # step 2: move container:/testbed to container:/workspace
-    exit_code, output = exec_command_in_container(
-        container,
-        "cp -r /testbed/. /workspace",
-        timeout=60,  # 60 seconds timeout
-    )
-    if exit_code != 0:
-        raise EvaluationError(instance.instance_id, exit_code, output)
-
-    # step 3: checkout to base_commit
-    exit_code, output = exec_command_in_container(
-        container,
-        f"git checkout {instance.base_commit}",
-        workdir="/workspace",
-    )
-    if exit_code != 0:
-        raise EvaluationError(instance.instance_id, exit_code, output)
-
-    # step 4: apply patch
-    temp_file_path = tempfile.mktemp()
-    with open(temp_file_path, "w") as f:
-        f.write(instance.patch)
-    copy_file_to_container(container, temp_file_path, "/tmp/patch.diff")
-    for git_apply_command in GIT_APPLY_COMMANDS:
+    try:
+        # step 2: move container:/testbed to container:/workspace
         exit_code, output = exec_command_in_container(
             container,
-            git_apply_command,
+            "cp -r /testbed/. /workspace",
+            timeout=60,  # 60 seconds timeout
+        )
+        if exit_code != 0:
+            raise EvaluationError(instance.instance_id, exit_code, output)
+
+        # step 3: checkout to base_commit
+        exit_code, output = exec_command_in_container(
+            container,
+            f"git checkout {instance.base_commit}",
             workdir="/workspace",
         )
-        if exit_code == 0:
-            break
-    if exit_code != 0:
-        raise EvaluationError(instance.instance_id, exit_code, output)
-    Path(temp_file_path).unlink()
+        if exit_code != 0:
+            raise EvaluationError(instance.instance_id, exit_code, output)
 
-    # step 5: run eval script
-    eval_script = instance.get_eval_script()
-    exit_code, output = exec_command_in_container(
-        container,
-        eval_script,
-        timeout=900,  # 15 minutes
-        workdir="/workspace",
-    )
+        # step 4: apply patch
+        temp_file_path = tempfile.mktemp()
+        with open(temp_file_path, "w") as f:
+            f.write(instance.patch)
+        copy_file_to_container(container, temp_file_path, "/tmp/patch.diff")
+        for git_apply_command in GIT_APPLY_COMMANDS:
+            exit_code, output = exec_command_in_container(
+                container,
+                git_apply_command,
+                workdir="/workspace",
+            )
+            if exit_code == 0:
+                break
+        if exit_code != 0:
+            raise EvaluationError(instance.instance_id, exit_code, output)
+        Path(temp_file_path).unlink()
 
-    evaluation_result = EvaluationResult(
-        instance_id=instance.instance_id,
-        resolved=exit_code == 0,
-        exit_code=exit_code,
-        test_log=output,
-    )
+        # step 5: run eval script
+        eval_script = instance.get_eval_script()
+        exit_code, output = exec_command_in_container(
+            container,
+            eval_script,
+            timeout=900,  # 15 minutes
+            workdir="/workspace",
+        )
 
-    # step 6: stop and remove container
-    stop_docker_container(container)
-    remove_docker_container(container)
-
-    return evaluation_result
+        evaluation_result = EvaluationResult(
+            instance_id=instance.instance_id,
+            resolved=exit_code == 0,
+            exit_code=exit_code,
+            test_log=output,
+        )
+        return evaluation_result
+    finally:
+        # step 6: stop and remove container (always do this)
+        try:
+            stop_docker_container(container)
+        except Exception:
+            pass
+        try:
+            remove_docker_container(container)
+        except Exception:
+            pass
 
 
 def run_evaluation(
