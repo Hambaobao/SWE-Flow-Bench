@@ -59,7 +59,13 @@ def _load_predictions(dataset: str, split: str, predictions_path: str) -> Dict[s
     if predictions_path == "gold":
         logger.info(f"Loading gold predictions for {dataset} {split}")
         ds = _load_dataset(dataset, split)
-        return {item.instance_id: Prediction(instance_id=item.instance_id, patch=item.patch, model="gold") for item in ds}
+        return {
+            instance_id: Prediction(
+                instance_id=item.instance_id,
+                patch=item.patch,
+                model="gold",
+            ) for instance_id, item in ds.items()
+        }
 
     if not predictions_path.endswith(".jsonl"):
         logger.error(f"Invalid predictions path: {predictions_path}")
@@ -84,10 +90,10 @@ def load_eval_instances(
     predictions = _load_predictions(dataset, split, predictions_path)
 
     if instance_ids is not None:
-        all_instance_ids = [item.instance_id for item in ds if item.instance_id in instance_ids]
+        all_instance_ids = [instance_id for instance_id in ds.keys() if instance_id in instance_ids]
         logger.info(f"Filtering dataset and predictions to only include instance IDs: {all_instance_ids}")
     else:
-        all_instance_ids = [item.instance_id for item in ds]
+        all_instance_ids = list(ds.keys())
 
     test_instances = []
     for instance_id in all_instance_ids:

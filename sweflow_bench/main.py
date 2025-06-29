@@ -2,6 +2,7 @@ import argparse
 import logging
 
 from sweflow_bench.utils.data import load_eval_instances
+from sweflow_bench.utils.run_evaluation import run_evaluation
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,12 +31,14 @@ def parse_args():
 def main():
     args = parse_args()
 
-    ds, predictions = load_eval_instances(
+    eval_instances = load_eval_instances(
         args.dataset,
         args.split,
         args.prediction_path,
         args.instance_ids,
     )
+
+    run_evaluation(eval_instances, args.output_dir)
 
 
 if __name__ == "__main__":
